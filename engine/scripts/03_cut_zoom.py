@@ -146,24 +146,28 @@ if os.environ.get("MONTEER_LOWMEM") and GRADE != "auto":
     # مونتير: ذاكرة قليلة (خادم 4 جيجا). كل مقطع يُقص بأمر ffmpeg مستقل ثم تُلصق المقاطع.
     # القص الأصلي بأمر واحد يحجز ~3.4 جيجا لفيديو 75 ث بدقة 720p.
     _T0 = float(SEEK[1]) if SEEK else 0.0
-    _parts=[]; _rc=0
-    for i,(s_,e_,crop) in enumerate(PIECES):
-        _pp=os.path.join(W,f"_seg{i:03d}.mkv"); _parts.append(_pp)
+    _parts=[os.path.join(W,f"_seg{i:03d}.mkv") for i in range(len(PIECES))]
+    def _cut(i):
+        s_,e_,crop=PIECES[i]
         _pre=min(2.0,_T0+s_)   # نبحث قبل المقطع بثانيتين ثم trim بالضبط — نفس فريمات القص الأصلي
         _ss=_T0+s_-_pre
         _f=(f"[0:v]trim=start={_pre:.4f}:end={_pre+e_-s_:.4f},setpts=PTS-STARTPTS,{crop},scale=1080:1920:flags=lanczos,setsar=1[v];"
             f"[0:a]atrim=start={_pre:.4f}:end={_pre+e_-s_:.4f},asetpts=PTS-STARTPTS[a]")
-        _rc=subprocess.call(["ffmpeg","-v","error","-nostats","-threads","2","-ss",f"{_ss:.4f}","-i",SRC,"-filter_complex",_f,
-            "-map","[v]","-map","[a]","-c:v","libx264","-preset","veryfast","-crf","12",
-            "-c:a","pcm_s16le","-ar","48000","-ac","2","-y",_pp])
-        if _rc: break
+        return subprocess.call(["ffmpeg","-v","error","-nostats","-threads","2","-ss",f"{_ss:.4f}","-i",SRC,"-filter_complex",_f,
+            "-map","[v]","-map","[a]","-c:v","libx264","-preset","ultrafast","-crf","12",
+            "-c:a","pcm_s16le","-ar","48000","-ac","2","-y",_parts[i]])
+    # المقاطع مستقلة: نقصها بالتوازي (عملية لكل نواتين)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1,(os.cpu_count() or 2)//2)) as _ex:
+        _rcs=list(_ex.map(_cut,range(len(PIECES))))
+    _rc=next((r for r in _rcs if r),0)
     if _rc==0:
         _lst=os.path.join(W,"_segs.txt"); open(_lst,"w").write("".join(f"file '{os.path.basename(x)}'\n" for x in _parts))
         _post=[f"[0:v]tpad=stop_mode=clone:stop_duration={TAIL:.3f}[vc]" if TAIL>0 else "[0:v]null[vc]",
                f"[0:a]apad=pad_dur={TAIL:.3f}[ac]" if TAIL>0 else "[0:a]anull[ac]"]
         _post += [x for x in fc if x.startswith("[vc]fps=30") or x.startswith("[ac]afade")]
         _rc=subprocess.call(["ffmpeg","-v","error","-nostats","-threads","2","-f","concat","-safe","0","-i",_lst,"-filter_complex",";".join(_post),
-            "-map","[vo]","-map","[ao]","-c:v","libx264","-preset","medium","-crf","16",
+            "-map","[vo]","-map","[ao]","-c:v","libx264","-preset",os.environ.get("X264_PRESET","medium"),"-crf","16",
             "-c:a","aac","-b:a","192k","-movflags","+faststart","-y",_OUT])
     for x in _parts:
         try: os.remove(x)

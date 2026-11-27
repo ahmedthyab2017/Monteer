@@ -144,7 +144,10 @@ async function movesInject(p){ if(await p.evaluate(()=>!!(window.FX&&window.MV&&
       for(const e of ext){ try{ h.update(e).update(fs.readFileSync(W+e)); }catch(_){} }
       return h.digest('hex'); })();
     let fpOld=''; try{ fpOld=fs.readFileSync(FPF,'utf8').trim(); }catch(_){}
-    if(mode==='all'){
+    /* مونتير: RENDER_SHARD=k/N يرسم الفريمات i%N==k فقط — عدة عمليات بالتوازي تقسم الشغل على الأنوية.
+       العملية الأم تمسح الفريمات القديمة قبلها، والمشاركات ما تمسح شي ولا تفحص النواقص (تعملها جولة أخيرة بلا SHARD). */
+    const SH=(process.env.RENDER_SHARD||'').split('/').map(Number), SHK=SH[0], SHN=SH[1]||0;
+    if(mode==='all'&&!SHN){
       if(!force&&fpOld&&fpOld!==fpNow){ console.log('🧷 التصميم تغيّر من آخر رسم — أعيد الرسم كامل (الفريمات القديمة ما تصلح)'); force=true; }
       if(force){ let k=0; for(const f of fs.readdirSync(W+'out')) if(f.endsWith('.jpg')){ fs.unlinkSync(W+'out/'+f); k++; }
         if(k) console.log('🧹 مسحت',k,'فريماً قديماً — لو طاح الرسم بنصه، أعد التشغيل بلا --force ويكمّل الناقص بس'); force=false; }
@@ -159,6 +162,7 @@ async function movesInject(p){ if(await p.evaluate(()=>!!(window.FX&&window.MV&&
     const done=f=>{try{return fs.statSync(f).size>2000;}catch(e){return false;}};
     let skipped=0,drawn=0;
     for(let i=i0;i<i1;i++){
+      if(SHN&&i%SHN!==SHK) continue;
       const f=W+'out/'+String(i).padStart(5,'0')+'.jpg';
       if(mode==='all'&&!force&&done(f)){skipped++;continue;}
       await grab(i/FPS,f,0.95); drawn++;
@@ -166,7 +170,7 @@ async function movesInject(p){ if(await p.evaluate(()=>!!(window.FX&&window.MV&&
     }
     if(skipped)console.log('تخطّى',skipped,'فريماً جاهزاً (استئناف) — --force يعيد الكل');
     console.log('تم',drawn,'فريم مرسوم من',n,'— المدة',dur.toFixed(3));
-    if(mode!=='range'){                  // ناقص فريم = تجميع مكسور، لازم ينكشف الحين
+    if(mode!=='range'&&!SHN){                  // ناقص فريم = تجميع مكسور، لازم ينكشف الحين
       let miss=0; for(let i=0;i<n;i++) if(!done(W+'out/'+String(i).padStart(5,'0')+'.jpg')) miss++;
       if(miss){ console.error('❌ ناقص',miss,'فريماً — أعد التشغيل قبل 06_encode.sh'); process.exitCode=1; }
       if(drawn+skipped===0){ console.error('❌ صفر فريم انرسم — شي غلط بالمدة أو مجلد vfr'); process.exitCode=1; }

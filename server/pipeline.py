@@ -2,7 +2,7 @@
 المرحلة A (تحليل): حذف السكتات ← الكتابة ← قاموس العيادة ← تعليم الهلوسة ← بانتظار المراجعة.
 المرحلة B (إنتاج): تعديلات المستخدم ← الكابشن ← حذف الجمل ← القص والزوم ← الرسم ← التصدير ← الصوت ‎-14 LUFS.
 """
-import json, os, re, shutil, subprocess, sys
+import json, os, re, shutil, subprocess, sys, time
 
 from transcribe import transcribe
 
@@ -91,6 +91,7 @@ def _similar(a, b):
 # ---------------- المرحلة A ----------------
 def analyze(job):
     W = job.dir
+    T = time.time()
     b = load_brand()
     job.set(stage="cut", msg="أحذف السكتات…", pct=5)
     run(job, [sys.executable, os.path.join(SCRIPTS, "01_cut_plan.py"), W])
@@ -103,7 +104,9 @@ def analyze(job):
     job.set(stage="transcribe", msg="أكتب الكلام بتوقيت كل كلمة…", pct=15)
     dic = b.get("dictionary", {})
     prompt = "، ".join(list(dict.fromkeys(list(dic.values()) + b.get("hot", []))))
+    t0 = time.time()
     d = transcribe(os.path.join(W, "a.wav"), W, prompt)
+    t_tr = round(time.time() - t0, 1)
     json.dump(d, open(os.path.join(W, "a_raw.json"), "w", encoding="utf-8"), ensure_ascii=False)
     # قاموس العيادة: يصلح الأخطاء المتكررة كلمة بكلمة
     fixed = 0
@@ -132,7 +135,8 @@ def analyze(job):
             sents[i]["flag"] = "يبدو أنك أعدت هذه الجملة في التي بعدها — اقترحت حذفها"
     json.dump(d, open(os.path.join(W, "a.json"), "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(sents, open(os.path.join(W, "sentences.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    job.set(stage="review", msg="راجع الكلام قبل الإنتاج", pct=30, engine=d.get("engine"), dict_fixed=fixed)
+    job.set(stage="review", msg="راجع الكلام قبل الإنتاج", pct=30, engine=d.get("engine"), dict_fixed=fixed,
+            timings_analyze={"transcribe": t_tr, "analyze_total": round(time.time() - T, 1)})
 
 
 # كلمات شائعة لا نحفظ تصحيحها: تصحيحها يعتمد على سياق الجملة لا على خطأ في السمع
@@ -181,6 +185,8 @@ def _rebuild_words(seg, text):
 
 def produce(job, edits, opts=None):
     W = job.dir
+    timings = {}
+    T = time.time()
     b = load_brand()
     if opts and opts.get("capStyle"):
         b["capStyle"] = opts["capStyle"]
@@ -235,7 +241,9 @@ def produce(job, edits, opts=None):
     job.set(stage="captions", msg="أركّب الكابشن على توقيت الصوت…", pct=35)
     run(job, [sys.executable, os.path.join(SCRIPTS, "02_captions.py"), W])
     job.set(stage="zoom", msg="أقص وأضيف الزوم…", pct=42)
+    t0 = time.time()
     run(job, [sys.executable, os.path.join(SCRIPTS, "03_cut_zoom.py"), W])
+    timings["cut_zoom"] = round(time.time() - t0, 1)
 
     # القالب والهوية
     comp = open(os.path.join(SCRIPTS, "compose.REFERENCE.html"), encoding="utf-8").read()
@@ -251,20 +259,34 @@ def produce(job, edits, opts=None):
     run(job, [sys.executable, os.path.join(SCRIPTS, "05_sfx.py"), W])
 
     job.set(stage="render", msg="أرسم الكابشن والخاتمة…", pct=45)
-    p = subprocess.Popen(["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all", "--force"], cwd=ENGINE,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
-    with open(os.path.join(W, "log.txt"), "a", encoding="utf-8") as lg:
-        for line in p.stdout:
-            lg.write(line)
-            m = re.search(r"(\d+)\s*/\s*(\d+)", line)
-            if m and line.startswith("فريم"):
-                job.set(pct=45 + int(45 * int(m.group(1)) / max(1, int(m.group(2)))))
-    if p.wait() != 0:
-        raise RuntimeError("فشل الرسم")
+    t0 = time.time()
+    out = os.path.join(W, "out")
+    os.makedirs(out, exist_ok=True)
+    for f in os.listdir(out):
+        if f.endswith(".jpg"):
+            os.remove(os.path.join(out, f))
+    # الرسم بالتوازي: كل عملية كروم ترسم فريمات i%N==k (الافتراضي = عدد الأنوية، أقصى 4 حتى لا تنفد الذاكرة)
+    n = max(1, min(int(os.environ.get("MONTEER_RENDER_WORKERS", "0") or os.cpu_count() or 1), 4))
+    total_frames = int(round((json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["total"] + 5.2) * 30))
+    lg = open(os.path.join(W, "log.txt"), "a", encoding="utf-8")
+    procs = [subprocess.Popen(["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"], cwd=ENGINE,
+                              env={**os.environ, "RENDER_SHARD": f"{k}/{n}"}, stdout=lg, stderr=subprocess.STDOUT)
+             for k in range(n)]
+    while any(p.poll() is None for p in procs):
+        time.sleep(2)
+        done_n = sum(1 for f in os.listdir(out) if f.endswith(".jpg"))
+        job.set(pct=45 + int(45 * min(1, done_n / max(1, total_frames))))
+    lg.close()
+    # جولة أخيرة بلا تقسيم: تكمّل أي فريم ناقص وتتأكد أن العدد كامل
+    run(job, ["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"])
+    timings["render"] = round(time.time() - t0, 1)
     job.set(stage="encode", msg="أصدّر الفيديو وأضبط الصوت…", pct=92)
+    t0 = time.time()
     run(job, ["bash", os.path.join(SCRIPTS, "06_encode.sh"), W])
     run(job, ["bash", os.path.join(SCRIPTS, "06c_loudfix.sh"), os.path.join(W, "ad-final.mp4"), os.path.join(W, "final.mp4")])
     subprocess.run(["ffmpeg", "-v", "error", "-ss", "1.2", "-i", os.path.join(W, "final.mp4"), "-frames:v", "1",
                     "-vf", "scale=360:-2", "-q:v", "4", "-y", os.path.join(W, "thumb.jpg")], check=False)
     total = json.load(open(os.path.join(W, "caps.json"), encoding="utf-8")).get("total", 0)
-    job.set(stage="done", msg="الريل جاهز", pct=100, learned=promoted, duration=round(total + 5.2, 1))
+    timings["encode"] = round(time.time() - t0, 1)
+    timings["produce_total"] = round(time.time() - T, 1)
+    job.set(stage="done", msg="الريل جاهز", pct=100, learned=promoted, duration=round(total + 5.2, 1), timings_produce=timings)

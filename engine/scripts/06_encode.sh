@@ -12,7 +12,7 @@ IN=(-framerate 30 -i "$W/out/%05d.jpg" -i "$W/cutz.mp4" -i "$W/sfx.wav"
  -map "[vo]" -map "[ao]")
 # 🎨 VF_ENCODE (_compat.sh): تحويل دقيق من فريمات المتصفح لـbt709. ووسوم bt709 تنكتب بالبتستريم (h264_metadata) — مع filter_complex
 #    كان color_transfer وcolor_primaries يطلعون unknown مهما انكتب بالأمر. ملف ألوان الحاوية (colr prof) يبقى مثل ما هو — شوف _compat.sh.
-V=(-c:v libx264 -preset slow -profile:v high -level 4.0 -pix_fmt yuv420p -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -r 30
+V=(-c:v libx264 -preset ${X264_PRESET:-slow} -profile:v high -level 4.0 -pix_fmt yuv420p -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -r 30
    -bsf:v h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0)
 A=(-c:a aac -b:a 160k -ar 48000)
 if [ "${FIT:-0}" = "1" ]; then
