@@ -18,6 +18,7 @@ PASSWORD = os.environ.get("MONTEER_PASSWORD", "")
 KEEP_DAYS = int(os.environ.get("MONTEER_KEEP_DAYS", "30"))   # خصوصية المرضى: تُحذف الفيديوهات بعدها
 
 app = FastAPI(title="Monteer")
+CAP_STYLES = {"card", "shadow", "big", "underline", "bar", "chunk"}
 Q = queue.Queue()
 
 
@@ -48,7 +49,10 @@ def worker():
         kind, jid, payload = Q.get()
         job = Job(jid)
         try:
-            pipeline.analyze(job) if kind == "analyze" else pipeline.produce(job, payload)
+            if kind == "analyze":
+                pipeline.analyze(job)
+            else:
+                pipeline.produce(job, payload["edits"], payload.get("opts"))
         except Exception as e:
             traceback.print_exc()
             job.set(stage="error", msg=str(e) or "حدث خطأ")
@@ -187,8 +191,10 @@ def produce(jid: str, body: dict, x_key: str = Header("")):
     else:
         shutil.copy(os.path.join(job.dir, "a.json"), os.path.join(job.dir, "a_review.json"))
         shutil.copy(os.path.join(job.dir, "cut.json"), os.path.join(job.dir, "cut.json.orig"))
-    job.set(stage="queued", msg="في الطابور…", pct=32)
-    Q.put(("produce", job.id, edits))
+    st = body.get("capStyle")
+    opts = {"capStyle": st} if st in CAP_STYLES else {}
+    job.set(stage="queued", msg="في الطابور…", pct=32, capStyle=opts.get("capStyle"))
+    Q.put(("produce", job.id, {"edits": edits, "opts": opts}))
     return job.get()
 
 
@@ -199,6 +205,35 @@ def video(jid: str, k: str = ""):
     if not os.path.exists(p):
         raise HTTPException(404, "الفيديو غير جاهز")
     return FileResponse(p, media_type="video/mp4", filename=f"reel-{os.path.basename(jid)}.mp4")
+
+
+def _job_file(jid, name, k, media):
+    auth(k)
+    p = os.path.join(JOBS, os.path.basename(jid), name)
+    if not os.path.exists(p):
+        raise HTTPException(404, "غير موجود")
+    return FileResponse(p, media_type=media)
+
+
+@app.get("/api/jobs/{jid}/preview")
+def preview(jid: str, k: str = ""):
+    return _job_file(jid, "preview.mp4", k, "video/mp4")
+
+
+@app.get("/api/jobs/{jid}/thumb.jpg")
+def thumb(jid: str, k: str = ""):
+    return _job_file(jid, "thumb.jpg", k, "image/jpeg")
+
+
+@app.delete("/api/jobs/{jid}")
+def delete_job(jid: str, x_key: str = Header("")):
+    auth(x_key)
+    d = os.path.join(JOBS, os.path.basename(jid))
+    m = Job(os.path.basename(jid)).get()
+    if m.get("stage") not in ("review", "done", "error"):
+        raise HTTPException(409, "لا يمكن الحذف أثناء العمل")
+    shutil.rmtree(d, ignore_errors=True)
+    return {"ok": True}
 
 
 @app.get("/api/brand")

@@ -11,71 +11,157 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <button class="ghost" id="homeBtn" aria-label="الرئيسية">مونتير</button>
-  <button class="ghost" id="setBtn">الإعدادات</button>
-</header>
+<!-- أيقونات موحّدة (خط واحد، زوايا دائرية) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-reels" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M3 8h18M8 3l3 5M14 3l3 5M10 12v5l4.5-2.5z"/></symbol>
+  <symbol id="i-brand" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9-.3-1 .4-2.1 1.5-2.1H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M4 12h11M4 18h7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-10"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19zM12 10v4M12 17.2v.1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3c.6 4.2 2.8 6.4 7 7-4.2.6-6.4 2.8-7 7-.6-4.2-2.8-6.4-7-7 4.2-.6 6.4-2.8 7-7z"/></symbol>
+</svg>
 
-<main>
-  <!-- الرئيسية -->
-  <section id="home">
-    <label class="upload">
-      <input type="file" id="file" accept="video/*" hidden>
-      <span class="big">＋ ارفع فيديو</span>
-      <span class="sub">فيديو تتكلم فيه للكاميرا · بالطول · حتى 3 دقائق</span>
+<!-- الدخول -->
+<section id="login" class="screen login hidden">
+  <div class="loginCard">
+    <img src="icon.png" alt="" class="appIcon">
+    <h1>مونتير</h1>
+    <p class="muted">ريل جاهز من فيديو كلامك</p>
+    <label class="field"><span>كلمة المرور</span>
+      <input id="pwLogin" type="password" autocomplete="current-password">
     </label>
-    <div id="upProg" class="prog hidden"><div></div><span></span></div>
-    <h2>آخر الريلز</h2>
-    <ul id="jobs" class="jobs"></ul>
-  </section>
+    <button id="loginBtn" class="btn primary big"><svg><use href="#i-lock"/></svg>دخول</button>
+    <p class="foot">دار الإبداع للحلول البرمجية</p>
+  </div>
+</section>
 
-  <!-- المهمة -->
-  <section id="job" class="hidden">
-    <h2 id="jobTitle"></h2>
-    <div id="jobProg" class="prog"><div></div><span></span></div>
-    <p id="jobMsg" class="msg"></p>
+<!-- الرئيسية -->
+<section id="home" class="screen hidden">
+  <header class="top">
+    <div class="who"><img id="brandLogo" alt="" class="miniLogo"><div><small class="muted">أهلاً بك</small><b id="brandName">مونتير</b></div></div>
+  </header>
+  <label class="hero" id="heroUpload">
+    <input type="file" id="file" accept="video/*" hidden>
+    <span class="heroIcon"><svg><use href="#i-plus"/></svg></span>
+    <span class="heroText"><b>ريل جديد</b><small>ارفع فيديو تتكلم فيه للكاميرا وخذه ريل جاهز</small></span>
+  </label>
+  <div id="upCard" class="card upCard hidden">
+    <div class="row"><svg class="ico"><use href="#i-upload"/></svg><b id="upTitle">أرفع الفيديو…</b><span id="upPct" class="pct">0٪</span></div>
+    <div class="bar"><i id="upBar"></i></div>
+    <small id="upSub" class="muted">خلّ الصفحة مفتوحة حتى يكمل الرفع</small>
+  </div>
+  <h2>قبل ما تصوّر</h2>
+  <div class="tips">
+    <div class="tip"><svg><use href="#i-phone"/></svg><b>صوّر بالطول</b><small>الجوال عمودي وثابت</small></div>
+    <div class="tip"><svg><use href="#i-sun"/></svg><b>الضوء أمامك</b><small>الشباك قدامك مو وراك</small></div>
+    <div class="tip"><svg><use href="#i-mic"/></svg><b>مكان هادئ</b><small>بلا مكيف أو تلفزيون</small></div>
+    <div class="tip"><svg><use href="#i-clock"/></svg><b>30–90 ثانية</b><small>فكرة واحدة لكل ريل</small></div>
+    <div class="tip"><svg><use href="#i-spark"/></svg><b>ابدأ بسؤال</b><small>أول 3 ثوانٍ تقرر المشاهدة</small></div>
+  </div>
+  <div class="secHead"><h2>آخر الريلز</h2><button class="link" data-go="reels">الكل</button></div>
+  <div id="recent" class="grid"></div>
+</section>
 
-    <div id="review" class="hidden">
-      <p class="hint">صحّح أي كلمة بالضغط عليها، واضغط «احذف» على الجملة التي لا تريدها فتنحذف من الفيديو. التصحيح الذي يتكرر يحفظه التطبيق في قاموس العيادة ويطبّقه تلقائياً بعدها.</p>
-      <ol id="sents" class="sents"></ol>
-      <button id="produceBtn" class="primary">أنتج الريل</button>
-    </div>
+<!-- ريلزي -->
+<section id="reels" class="screen hidden">
+  <header class="top"><h1>ريلزي</h1></header>
+  <div id="allReels" class="grid"></div>
+</section>
 
-    <div id="done" class="hidden">
-      <video id="player" controls playsinline></video>
-      <a id="dl" class="primary" download>نزّل الريل</a>
-      <button id="reBtn" class="ghost wide">عدّل الكلام وأعد الإنتاج</button>
-    </div>
-  </section>
+<!-- المهمة -->
+<section id="job" class="screen hidden">
+  <header class="top bar">
+    <button class="iconBtn" data-go="home" aria-label="رجوع"><svg><use href="#i-back"/></svg></button>
+    <b id="jobTitle" class="ellipsis"></b>
+    <button class="iconBtn danger" id="delJob" aria-label="حذف"><svg><use href="#i-trash"/></svg></button>
+  </header>
+  <ol class="stepper" id="stepper">
+    <li data-s="1"><span><svg><use href="#i-upload"/></svg></span>الرفع</li>
+    <li data-s="2"><span><svg><use href="#i-text"/></svg></span>الكتابة</li>
+    <li data-s="3"><span><svg><use href="#i-check"/></svg></span>مراجعتك</li>
+    <li data-s="4"><span><svg><use href="#i-film"/></svg></span>الإنتاج</li>
+  </ol>
 
-  <!-- الإعدادات -->
-  <section id="settings" class="hidden">
-    <h2>هوية العيادة</h2>
-    <div class="logoRow">
-      <img id="logoPrev" alt="">
-      <label class="ghost">تغيير الشعار<input type="file" id="logoFile" accept="image/*" hidden></label>
+  <div id="working" class="card working">
+    <div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="track"/><circle cx="60" cy="60" r="52" class="val" id="ringVal"/></svg><b id="ringPct">0٪</b></div>
+    <b id="jobMsg" class="msg"></b>
+    <small class="muted">تقدر تطلع من التطبيق، الشغل يكمل على الخادم</small>
+  </div>
+
+  <div id="errBox" class="card errBox hidden"><svg><use href="#i-warn"/></svg><div><b>صار خطأ</b><small id="errMsg"></small></div></div>
+
+  <div id="review" class="hidden">
+    <div class="previewWrap"><video id="pv" playsinline preload="metadata"></video></div>
+    <p class="hint">اضغط على أي جملة لتسمعها، صحّح الكلمة الغلط مباشرة، واحذف الجملة التي لا تريدها.</p>
+    <ol id="sents" class="sents"></ol>
+    <h2>شكل الكابشن</h2>
+    <div class="styles" id="styles"></div>
+    <div class="sticky"><button id="produceBtn" class="btn primary big"><svg><use href="#i-film"/></svg>أنتج الريل</button></div>
+  </div>
+
+  <div id="done" class="hidden">
+    <div class="player"><video id="player" controls playsinline></video></div>
+    <div class="actions">
+      <button class="act" id="shareBtn"><svg><use href="#i-share"/></svg>مشاركة</button>
+      <a class="act" id="dl" download><svg><use href="#i-down"/></svg>تنزيل</a>
+      <button class="act" id="copyBtn"><svg><use href="#i-copy"/></svg>نسخ الكلام</button>
     </div>
-    <label>اسم العيادة<input id="b_name"></label>
-    <label>العنوان<input id="b_address"></label>
-    <label>رقم الحجز<input id="b_phone" inputmode="tel" dir="ltr"></label>
-    <label>اسم الطبيب (تحت الرقم)<input id="b_doctor"></label>
-    <label>حساب إنستغرام<input id="b_handle" dir="ltr" placeholder="@soranclinic"></label>
-    <label>الخدمات في الخاتمة (أربع، يفصلها فاصلة)<input id="b_chips"></label>
-    <label>عبارة الحجز<input id="b_cta"></label>
-    <div class="colors">
-      <label>لون الخلفية<input type="color" id="b_bg"></label>
-      <label>لون التمييز<input type="color" id="b_acc"></label>
-    </div>
-    <h2>قاموس العيادة</h2>
-    <p class="hint">كل سطر: الكلمة كما يكتبها التطبيق خطأً = الصحيحة. يُطبَّق تلقائياً على كل فيديو.</p>
-    <textarea id="b_dict" rows="8" placeholder="أصح = أنصح"></textarea>
-    <label>كلمات تُلوَّن في الكابشن (يفصلها فاصلة)<input id="b_hot"></label>
-    <button id="saveBrand" class="primary">احفظ</button>
-    <h2>الدخول</h2>
-    <label>كلمة مرور التطبيق<input id="pw" type="password"></label>
-    <p class="hint" id="engineInfo"></p>
-  </section>
-</main>
+    <button id="reBtn" class="btn ghost"><svg><use href="#i-undo"/></svg>عدّل الكلام أو الشكل وأعد الإنتاج</button>
+  </div>
+</section>
+
+<!-- الهوية -->
+<section id="brand" class="screen hidden">
+  <header class="top"><h1>هوية العيادة</h1></header>
+  <div class="card brandCard">
+    <img id="logoPrev" alt="">
+    <div><b>الشعار</b><small class="muted">يظهر في خاتمة كل ريل</small>
+      <label class="btn ghost small">تغيير<input type="file" id="logoFile" accept="image/*" hidden></label></div>
+  </div>
+  <div class="card">
+    <label class="field"><span>اسم العيادة</span><input id="b_name"></label>
+    <label class="field"><span>العنوان</span><input id="b_address"></label>
+    <label class="field"><span>رقم الحجز</span><input id="b_phone" inputmode="tel" dir="ltr"></label>
+    <label class="field"><span>اسم الطبيب</span><input id="b_doctor"></label>
+    <label class="field"><span>حساب إنستغرام</span><input id="b_handle" dir="ltr" placeholder="@soranclinic"></label>
+    <label class="field"><span>عبارة الحجز</span><input id="b_cta"></label>
+  </div>
+  <h2>الخدمات في الخاتمة</h2>
+  <div class="chips" id="chipsSvc"></div>
+  <div class="addRow"><input id="svcNew" placeholder="أضف خدمة"><button class="btn ghost small" id="svcAdd">إضافة</button></div>
+  <h2>الألوان</h2>
+  <div class="palettes" id="palettes"></div>
+  <h2>شكل الكابشن الافتراضي</h2>
+  <div class="styles" id="stylesBrand"></div>
+  <h2>قاموس العيادة</h2>
+  <p class="hint">الكلمة كما يكتبها التطبيق غلط ← الصحيحة. يُطبَّق على كل فيديو تلقائياً، والتصحيح الذي يتكرر يُضاف وحده.</p>
+  <div class="dict" id="dict"></div>
+  <div class="addRow"><input id="dWrong" placeholder="الغلط"><span class="arrow">←</span><input id="dRight" placeholder="الصحيح"><button class="btn ghost small" id="dAdd">إضافة</button></div>
+  <div class="sticky"><button id="saveBrand" class="btn primary big">حفظ الهوية</button></div>
+  <div class="card meta"><small id="engineInfo" class="muted"></small><button class="link" id="logout">تسجيل الخروج</button></div>
+</section>
+
+<nav class="tabs hidden" id="tabs">
+  <button data-go="home"><svg><use href="#i-home"/></svg>الرئيسية</button>
+  <button data-go="reels"><svg><use href="#i-reels"/></svg>ريلزي</button>
+  <button data-go="brand"><svg><use href="#i-brand"/></svg>الهوية</button>
+</nav>
 <div id="toast" class="toast hidden"></div>
 <script src="app.js"></script>
 </body>

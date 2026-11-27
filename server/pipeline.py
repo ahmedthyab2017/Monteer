@@ -96,6 +96,10 @@ def analyze(job):
     run(job, [sys.executable, os.path.join(SCRIPTS, "01_cut_plan.py"), W])
     subprocess.run(["ffmpeg", "-v", "error", "-i", os.path.join(W, "src.mov"), "-vn", "-ac", "1", "-ar", "16000",
                     "-y", os.path.join(W, "a.wav")], check=True)
+    # نسخة خفيفة للمعاينة على الجوال أثناء مراجعة الكلام (H.264 يشتغل على كل الأجهزة، بعكس HEVC من الآيفون)
+    subprocess.run(["ffmpeg", "-v", "error", "-threads", "2", "-i", os.path.join(W, "src.mov"), "-vf", "scale=-2:640",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-c:a", "aac", "-b:a", "64k",
+                    "-movflags", "+faststart", "-y", os.path.join(W, "preview.mp4")], check=False)
     job.set(stage="transcribe", msg="أكتب الكلام بتوقيت كل كلمة…", pct=15)
     dic = b.get("dictionary", {})
     prompt = "، ".join(list(dict.fromkeys(list(dic.values()) + b.get("hot", []))))
@@ -175,9 +179,11 @@ def _rebuild_words(seg, text):
     return out
 
 
-def produce(job, edits):
+def produce(job, edits, opts=None):
     W = job.dir
     b = load_brand()
+    if opts and opts.get("capStyle"):
+        b["capStyle"] = opts["capStyle"]
     d = json.load(open(os.path.join(W, "a.json"), encoding="utf-8"))
     segs = d["segments"]
     learned_pairs = []
@@ -258,4 +264,7 @@ def produce(job, edits):
     job.set(stage="encode", msg="أصدّر الفيديو وأضبط الصوت…", pct=92)
     run(job, ["bash", os.path.join(SCRIPTS, "06_encode.sh"), W])
     run(job, ["bash", os.path.join(SCRIPTS, "06c_loudfix.sh"), os.path.join(W, "ad-final.mp4"), os.path.join(W, "final.mp4")])
-    job.set(stage="done", msg="الريل جاهز", pct=100, learned=promoted)
+    subprocess.run(["ffmpeg", "-v", "error", "-ss", "1.2", "-i", os.path.join(W, "final.mp4"), "-frames:v", "1",
+                    "-vf", "scale=360:-2", "-q:v", "4", "-y", os.path.join(W, "thumb.jpg")], check=False)
+    total = json.load(open(os.path.join(W, "caps.json"), encoding="utf-8")).get("total", 0)
+    job.set(stage="done", msg="الريل جاهز", pct=100, learned=promoted, duration=round(total + 5.2, 1))
