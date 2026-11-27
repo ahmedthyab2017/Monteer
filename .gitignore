@@ -1,0 +1,6 @@
+engine/node_modules/
+data/
+**/__pycache__/
+*.zip
+Dockerfile.test
+_ca.crt

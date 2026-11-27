@@ -1,0 +1,192 @@
+"""مونتير — خادم الواجهة والمهام.  تشغيل:  uvicorn app:app --host 0.0.0.0 --port 8080  (من مجلد server)"""
+import json, os, queue, shutil, threading, time, traceback, uuid
+
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+import pipeline
+
+ROOT = pipeline.ROOT
+JOBS = os.path.join(pipeline.DATA, "jobs")
+os.makedirs(JOBS, exist_ok=True)
+# أول تشغيل على قرص دائم فارغ: ننسخ هوية سوران الجاهزة من seed/brand
+_seed = os.path.join(ROOT, "seed", "brand")
+if os.path.isdir(_seed) and not os.path.exists(os.path.join(pipeline.BRAND_DIR, "brand.json")):
+    shutil.copytree(_seed, pipeline.BRAND_DIR, dirs_exist_ok=True)
+PASSWORD = os.environ.get("MONTEER_PASSWORD", "")
+KEEP_DAYS = int(os.environ.get("MONTEER_KEEP_DAYS", "30"))   # خصوصية المرضى: تُحذف الفيديوهات بعدها
+
+app = FastAPI(title="Monteer")
+Q = queue.Queue()
+
+
+class Job:
+    def __init__(self, jid):
+        self.id, self.dir = jid, os.path.join(JOBS, jid)
+
+    @property
+    def meta_path(self):
+        return os.path.join(self.dir, "job.json")
+
+    def get(self):
+        try:
+            return json.load(open(self.meta_path, encoding="utf-8"))
+        except FileNotFoundError:
+            raise HTTPException(404, "غير موجود")
+
+    def set(self, **kw):
+        m = self.get() if os.path.exists(self.meta_path) else {}
+        m.update(kw, updated=time.time())
+        tmp = self.meta_path + ".tmp"
+        json.dump(m, open(tmp, "w", encoding="utf-8"), ensure_ascii=False)
+        os.replace(tmp, self.meta_path)
+
+
+def worker():
+    while True:
+        kind, jid, payload = Q.get()
+        job = Job(jid)
+        try:
+            pipeline.analyze(job) if kind == "analyze" else pipeline.produce(job, payload)
+        except Exception as e:
+            traceback.print_exc()
+            job.set(stage="error", msg=str(e) or "حدث خطأ")
+        Q.task_done()
+
+
+def cleanup():
+    while True:
+        cut = time.time() - KEEP_DAYS * 86400
+        for j in os.listdir(JOBS):
+            p = os.path.join(JOBS, j)
+            if os.path.isdir(p) and os.path.getmtime(p) < cut:
+                shutil.rmtree(p, ignore_errors=True)
+        time.sleep(6 * 3600)
+
+
+threading.Thread(target=worker, daemon=True).start()
+threading.Thread(target=cleanup, daemon=True).start()
+
+
+def auth(key):
+    if PASSWORD and key != PASSWORD:
+        raise HTTPException(401, "كلمة المرور غير صحيحة")
+
+
+@app.get("/api/ping")
+def ping(x_key: str = Header("")):
+    auth(x_key)
+    return {"ok": True, "engine": "groq" if os.environ.get("GROQ_API_KEY") else "local", "queue": Q.qsize()}
+
+
+@app.post("/api/jobs")
+async def create_job(video: UploadFile = File(...), x_key: str = Header("")):
+    auth(x_key)
+    jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    job = Job(jid)
+    os.makedirs(job.dir)
+    with open(os.path.join(job.dir, "src.mov"), "wb") as f:
+        while chunk := await video.read(1 << 20):
+            f.write(chunk)
+    job.set(id=jid, name=video.filename, stage="queued", msg="في الطابور…", pct=1, created=time.time())
+    Q.put(("analyze", jid, None))
+    return job.get()
+
+
+@app.get("/api/jobs")
+def list_jobs(x_key: str = Header("")):
+    auth(x_key)
+    out = []
+    for j in sorted(os.listdir(JOBS), reverse=True)[:30]:
+        try:
+            out.append(Job(j).get())
+        except HTTPException:
+            pass
+    return out
+
+
+@app.get("/api/jobs/{jid}")
+def get_job(jid: str, x_key: str = Header("")):
+    auth(x_key)
+    job = Job(os.path.basename(jid))
+    m = job.get()
+    sp = os.path.join(job.dir, "sentences.json")
+    if os.path.exists(sp):
+        m["sentences"] = json.load(open(sp, encoding="utf-8"))
+    return m
+
+
+@app.post("/api/jobs/{jid}/produce")
+def produce(jid: str, body: dict, x_key: str = Header("")):
+    auth(x_key)
+    job = Job(os.path.basename(jid))
+    m = job.get()
+    if m.get("stage") not in ("review", "done", "error"):
+        raise HTTPException(409, "المهمة ما زالت تعمل")
+    sents = json.load(open(os.path.join(job.dir, "sentences.json"), encoding="utf-8"))
+    edits = body.get("sentences", [])
+    if len(edits) != len(sents):
+        raise HTTPException(400, "عدد الجمل لا يطابق")
+    for s, e in zip(sents, edits):
+        s["text"], s["drop"] = e.get("text", s["text"]), bool(e.get("drop"))
+    json.dump(sents, open(os.path.join(job.dir, "sentences.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    if m.get("stage") != "review":     # إعادة إنتاج: نرجع لنسخة التحليل الأصلية
+        shutil.copy(os.path.join(job.dir, "a_review.json"), os.path.join(job.dir, "a.json"))
+        for f in ("cut.json.orig",):
+            if os.path.exists(os.path.join(job.dir, f)):
+                shutil.copy(os.path.join(job.dir, f), os.path.join(job.dir, "cut.json"))
+    else:
+        shutil.copy(os.path.join(job.dir, "a.json"), os.path.join(job.dir, "a_review.json"))
+        shutil.copy(os.path.join(job.dir, "cut.json"), os.path.join(job.dir, "cut.json.orig"))
+    job.set(stage="queued", msg="في الطابور…", pct=32)
+    Q.put(("produce", job.id, edits))
+    return job.get()
+
+
+@app.get("/api/jobs/{jid}/video")
+def video(jid: str, k: str = ""):
+    auth(k)
+    p = os.path.join(JOBS, os.path.basename(jid), "final.mp4")
+    if not os.path.exists(p):
+        raise HTTPException(404, "الفيديو غير جاهز")
+    return FileResponse(p, media_type="video/mp4", filename=f"reel-{os.path.basename(jid)}.mp4")
+
+
+@app.get("/api/brand")
+def get_brand(x_key: str = Header("")):
+    auth(x_key)
+    b = pipeline.load_brand()
+    b["hasLogo"] = os.path.exists(os.path.join(pipeline.BRAND_DIR, "logo.png"))
+    return b
+
+
+@app.post("/api/brand")
+def set_brand(body: dict, x_key: str = Header("")):
+    auth(x_key)
+    b = pipeline.load_brand()
+    body.pop("hasLogo", None)
+    b.update(body)
+    pipeline.save_brand(b)
+    return b
+
+
+@app.post("/api/brand/logo")
+async def set_logo(logo: UploadFile = File(...), x_key: str = Header("")):
+    auth(x_key)
+    os.makedirs(pipeline.BRAND_DIR, exist_ok=True)
+    raw = os.path.join(pipeline.BRAND_DIR, "logo_src")
+    open(raw, "wb").write(await logo.read())
+    pipeline.make_logo_card(raw, os.path.join(pipeline.BRAND_DIR, "logo.png"))
+    return {"ok": True}
+
+
+@app.get("/api/brand/logo.png")
+def logo_png():
+    p = os.path.join(pipeline.BRAND_DIR, "logo.png")
+    if not os.path.exists(p):
+        raise HTTPException(404)
+    return FileResponse(p)
+
+
+app.mount("/", StaticFiles(directory=os.path.join(ROOT, "web"), html=True), name="web")

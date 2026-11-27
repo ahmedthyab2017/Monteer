@@ -1,0 +1,4 @@
+# اختياري: الكتابة على الخادم بدون Groq (يحتاج 8 جيجا ذاكرة على الأقل)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+openai-whisper
