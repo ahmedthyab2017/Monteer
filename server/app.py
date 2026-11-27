@@ -1,7 +1,7 @@
 """مونتير — خادم الواجهة والمهام.  تشغيل:  uvicorn app:app --host 0.0.0.0 --port 8080  (من مجلد server)"""
 import json, os, queue, shutil, threading, time, traceback, uuid
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -90,6 +90,54 @@ async def create_job(video: UploadFile = File(...), x_key: str = Header("")):
         while chunk := await video.read(1 << 20):
             f.write(chunk)
     job.set(id=jid, name=video.filename, stage="queued", msg="في الطابور…", pct=1, created=time.time())
+    Q.put(("analyze", jid, None))
+    return job.get()
+
+
+# ---- الرفع على قطع: بوابة الاستضافة ترفض الطلب الأكبر من ~25 ميغا، والنت الضعيف يقطع الرفع الطويل ----
+UPLOADS = os.path.join(pipeline.DATA, "uploads")
+os.makedirs(UPLOADS, exist_ok=True)
+
+
+@app.post("/api/uploads")
+def start_upload(x_key: str = Header("")):
+    auth(x_key)
+    uid = uuid.uuid4().hex
+    os.makedirs(os.path.join(UPLOADS, uid))
+    return {"uid": uid}
+
+
+@app.put("/api/uploads/{uid}/{n}")
+async def put_chunk(uid: str, n: int, request: Request, x_key: str = Header("")):
+    auth(x_key)
+    d = os.path.join(UPLOADS, os.path.basename(uid))
+    if not os.path.isdir(d) or n < 0 or n > 10000:
+        raise HTTPException(404, "رفع غير معروف")
+    tmp = os.path.join(d, f"{n:05d}.part.tmp")
+    with open(tmp, "wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+    os.replace(tmp, os.path.join(d, f"{n:05d}.part"))   # القطعة تُعتمد فقط إذا وصلت كاملة
+    return {"ok": True, "n": n}
+
+
+@app.post("/api/uploads/{uid}/done")
+def finish_upload(uid: str, body: dict, x_key: str = Header("")):
+    auth(x_key)
+    d = os.path.join(UPLOADS, os.path.basename(uid))
+    parts = sorted(f for f in os.listdir(d) if f.endswith(".part")) if os.path.isdir(d) else []
+    total = int(body.get("parts", 0))
+    if not parts or len(parts) != total:
+        raise HTTPException(400, f"وصل {len(parts)} من {total} قطعة")
+    jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    job = Job(jid)
+    os.makedirs(job.dir)
+    with open(os.path.join(job.dir, "src.mov"), "wb") as out:
+        for f in parts:
+            with open(os.path.join(d, f), "rb") as inp:
+                shutil.copyfileobj(inp, out, 1 << 20)
+    shutil.rmtree(d, ignore_errors=True)
+    job.set(id=jid, name=str(body.get("name", ""))[:120], stage="queued", msg="في الطابور…", pct=1, created=time.time())
     Q.put(("analyze", jid, None))
     return job.get()
 

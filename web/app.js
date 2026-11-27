@@ -29,16 +29,31 @@ async function loadJobs(){
     li.onclick=()=>openJob(j.id); ul.appendChild(li);
   }
 }
-$('#file').onchange = e => {
+$('#file').onchange = async e => {
   const f=e.target.files[0]; if(!f) return;
-  const fd=new FormData(); fd.append('video',f);
-  const x=new XMLHttpRequest(), pr=$('#upProg'); pr.classList.remove('hidden');
-  x.upload.onprogress=ev=>{ if(ev.lengthComputable) setProg(pr,Math.round(100*ev.loaded/ev.total),'أرفع الفيديو… '+Math.round(100*ev.loaded/ev.total)+'٪'); };
-  x.onload=()=>{ pr.classList.add('hidden'); e.target.value='';
-    if(x.status!==200){ toast(x.status===401?'كلمة المرور غير صحيحة':'فشل الرفع، حاول مرة ثانية'); return; }
-    openJob(JSON.parse(x.responseText).id); };
-  x.onerror=()=>{ pr.classList.add('hidden'); toast('انقطع الاتصال أثناء الرفع، حاول مرة ثانية'); };
-  x.open('POST','/api/jobs'); x.setRequestHeader('X-Key',KEY()); x.send(fd);
+  const pr=$('#upProg'); pr.classList.remove('hidden');
+  const CH=8*1024*1024, n=Math.max(1,Math.ceil(f.size/CH));
+  try{
+    const {uid}=await api('/api/uploads',{method:'POST'});
+    for(let i=0;i<n;i++){
+      const blob=f.slice(i*CH,Math.min(f.size,(i+1)*CH));
+      for(let a=0;;a++){            // كل قطعة تُعاد حتى 5 مرات لو انقطع النت
+        try{
+          await new Promise((ok,bad)=>{ const x=new XMLHttpRequest();
+            x.upload.onprogress=ev=>{ const p=Math.round(100*(i*CH+ev.loaded)/f.size); setProg(pr,p,'أرفع الفيديو… '+p+'٪'); };
+            x.onload=()=>x.status===200?ok():bad(x.status); x.onerror=()=>bad(0);
+            x.open('PUT','/api/uploads/'+uid+'/'+i); x.setRequestHeader('X-Key',KEY()); x.send(blob); });
+          break;
+        }catch(st){
+          if(st===401){ throw new Error('كلمة المرور غير صحيحة'); }
+          if(a>=4) throw new Error('انقطع الاتصال أثناء الرفع، حاول مرة ثانية');
+          setProg(pr,Math.round(100*i*CH/f.size),'ضعف في النت… أعيد المحاولة'); await new Promise(r=>setTimeout(r,3000*(a+1)));
+        }
+      }
+    }
+    const j=await api('/api/uploads/'+uid+'/done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({parts:n,name:f.name})});
+    pr.classList.add('hidden'); e.target.value=''; openJob(j.id);
+  }catch(err){ pr.classList.add('hidden'); e.target.value=''; toast(err.message||'فشل الرفع'); }
 };
 
 /* ---------- المهمة ---------- */
