@@ -242,6 +242,9 @@ def produce(job, edits, opts=None):
     run(job, [sys.executable, os.path.join(SCRIPTS, "02_captions.py"), W])
     job.set(stage="zoom", msg="أقص وأضيف الزوم…", pct=42)
     t0 = time.time()
+    OVL = os.environ.get("MONTEER_OVL", "1") != "0"   # ⚡ وضع الطبقة: المتصفح يرسم الكابشن بس وffmpeg يركّبه
+    if OVL:
+        os.environ["MONTEER_NOVFR"] = "1"
     run(job, [sys.executable, os.path.join(SCRIPTS, "03_cut_zoom.py"), W])
     timings["cut_zoom"] = round(time.time() - t0, 1)
 
@@ -260,29 +263,47 @@ def produce(job, edits, opts=None):
 
     job.set(stage="render", msg="أرسم الكابشن والخاتمة…", pct=45)
     t0 = time.time()
-    out = os.path.join(W, "out")
-    os.makedirs(out, exist_ok=True)
-    for f in os.listdir(out):
-        if f.endswith(".jpg"):
-            os.remove(os.path.join(out, f))
-    # الرسم بالتوازي: كل عملية كروم ترسم فريمات i%N==k (الافتراضي = عدد الأنوية، أقصى 4 حتى لا تنفد الذاكرة)
-    n = max(1, min(int(os.environ.get("MONTEER_RENDER_WORKERS", "0") or os.cpu_count() or 1), 4))
-    total_frames = int(round((json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["total"] + 5.2) * 30))
-    lg = open(os.path.join(W, "log.txt"), "a", encoding="utf-8")
-    procs = [subprocess.Popen(["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"], cwd=ENGINE,
-                              env={**os.environ, "RENDER_SHARD": f"{k}/{n}"}, stdout=lg, stderr=subprocess.STDOUT)
-             for k in range(n)]
-    while any(p.poll() is None for p in procs):
-        time.sleep(2)
-        done_n = sum(1 for f in os.listdir(out) if f.endswith(".jpg"))
-        job.set(pct=45 + int(45 * min(1, done_n / max(1, total_frames))))
-    lg.close()
-    # جولة أخيرة بلا تقسيم: تكمّل أي فريم ناقص وتتأكد أن العدد كامل
-    run(job, ["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"])
+    if OVL:
+        nv = int(round(json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["total"] * 30))
+        lg = open(os.path.join(W, "log.txt"), "a", encoding="utf-8")
+        pr = subprocess.Popen(["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "ovl"], cwd=ENGINE,
+                              stdout=lg, stderr=subprocess.STDOUT)
+        while pr.poll() is None:
+            time.sleep(1.5)
+            try:
+                last = open(os.path.join(W, "log.txt"), encoding="utf-8").read()[-400:]
+                m = re.findall(r"طبقة (\d+) /", last)
+                if m:
+                    job.set(pct=45 + int(40 * min(1, int(m[-1]) / max(1, nv))))
+            except Exception:
+                pass
+        lg.close()
+        if pr.returncode != 0 or not os.path.exists(os.path.join(W, "ovl", "list.txt")):
+            raise RuntimeError("فشل رسم الكابشن (وضع الطبقة)")
+    else:
+        out = os.path.join(W, "out")
+        os.makedirs(out, exist_ok=True)
+        for f in os.listdir(out):
+            if f.endswith(".jpg"):
+                os.remove(os.path.join(out, f))
+        # الرسم بالتوازي: كل عملية كروم ترسم فريمات i%N==k (الافتراضي = عدد الأنوية، أقصى 4 حتى لا تنفد الذاكرة)
+        n = max(1, min(int(os.environ.get("MONTEER_RENDER_WORKERS", "0") or os.cpu_count() or 1), 4))
+        total_frames = int(round((json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["total"] + 5.2) * 30))
+        lg = open(os.path.join(W, "log.txt"), "a", encoding="utf-8")
+        procs = [subprocess.Popen(["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"], cwd=ENGINE,
+                                  env={**os.environ, "RENDER_SHARD": f"{k}/{n}"}, stdout=lg, stderr=subprocess.STDOUT)
+                 for k in range(n)]
+        while any(p.poll() is None for p in procs):
+            time.sleep(2)
+            done_n = sum(1 for f in os.listdir(out) if f.endswith(".jpg"))
+            job.set(pct=45 + int(45 * min(1, done_n / max(1, total_frames))))
+        lg.close()
+        # جولة أخيرة بلا تقسيم: تكمّل أي فريم ناقص وتتأكد أن العدد كامل
+        run(job, ["node", os.path.join(SCRIPTS, "04_render_frames.js"), W, "all"])
     timings["render"] = round(time.time() - t0, 1)
     job.set(stage="encode", msg="أصدّر الفيديو وأضبط الصوت…", pct=92)
     t0 = time.time()
-    run(job, ["bash", os.path.join(SCRIPTS, "06_encode.sh"), W])
+    run(job, ["bash", os.path.join(SCRIPTS, "06o_encode_ovl.sh" if OVL else "06_encode.sh"), W])
     run(job, ["bash", os.path.join(SCRIPTS, "06c_loudfix.sh"), os.path.join(W, "ad-final.mp4"), os.path.join(W, "final.mp4")])
     subprocess.run(["ffmpeg", "-v", "error", "-ss", "1.2", "-i", os.path.join(W, "final.mp4"), "-frames:v", "1",
                     "-vf", "scale=360:-2", "-q:v", "4", "-y", os.path.join(W, "thumb.jpg")], check=False)

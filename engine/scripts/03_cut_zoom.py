@@ -179,5 +179,5 @@ else:
 if _rc==0:
     _d=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",_OUT],capture_output=True,text=True).stdout.strip()
     print(f"✅ cutz.mp4 — {float(_d or 0):.2f} ث · {len(k)} مقطع")
-    _rc=_frames()
+    if os.environ.get("MONTEER_NOVFR")!="1": _rc=_frames()   # مونتير ⚡: وضع الطبقة ما يحتاج فريمات vfr
 sys.exit(_rc)

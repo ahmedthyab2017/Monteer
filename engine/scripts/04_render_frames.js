@@ -57,7 +57,7 @@ async function movesInject(p){ if(await p.evaluate(()=>!!(window.FX&&window.MV&&
   const puppeteer=resolvePuppeteer();
   const mode=process.argv[3]||'all';
   const caps=JSON.parse(fs.readFileSync(W+'caps.json','utf8'));
-  const NVF=fs.readdirSync(W+'vfr').filter(f=>f.endsWith('.jpg')).length;
+  const NVF=fs.existsSync(W+'vfr')?fs.readdirSync(W+'vfr').filter(f=>f.endsWith('.jpg')).length:1;
   const dur=Number(caps.total)+OUT_D;
   /* 6.0: مدة مو رقم أو صفر = رسم فاضي ينجح بصمت — نوقف بصوت عالي قبل ما نفتح كروم */
   if(!isFinite(dur)||Math.round(dur*FPS)<=0){
@@ -127,6 +127,29 @@ async function movesInject(p){ if(await p.evaluate(()=>!!(window.FX&&window.MV&&
     fs.writeFileSync(W+'cues.json',JSON.stringify(cues,null,0).replace(/\},\{/g,'},\n{'));
     const by={}; cues.forEach(c=>by[c.k]=(by[c.k]||0)+1);
     console.log('🔊 cues.json:',cues.length,'صوت مربوط بحركة —',Object.entries(by).map(([k,v])=>k+' '+v).join(' · ')||'ولا واحد (المشاهد ما تنادي MV.cue)');
+  }else if(mode==='ovl'){
+    /* مونتير ⚡ وضع الطبقة: الكابشن فقط (PNG شفاف) والمكرر يتخطّى ← ovl/list.txt (concat بمدد) · الخاتمة فريمات JPEG بـout/ */
+    fs.rmSync(W+'ovl',{recursive:true,force:true}); fs.rmSync(W+'out',{recursive:true,force:true});
+    fs.mkdirSync(W+'ovl',{recursive:true}); fs.mkdirSync(W+'out',{recursive:true});
+    await p.evaluate(()=>{window.OVL=true;});
+    const nv=Math.round(Number(caps.total)*FPS), n=Math.round(dur*FPS);
+    const segs=[]; let cur=null, enc=0;
+    for(let i=0;i<nv;i++){
+      const d=await p.evaluate(t=>window.ovlShot(t),i/FPS);
+      if(d===null){ cur.n++; continue; }
+      let f='empty.png';
+      if(d!=='empty'){ f=String(i).padStart(5,'0')+'.png'; fs.writeFileSync(W+'ovl/'+f,Buffer.from(d.split(',')[1],'base64')); enc++; }
+      cur={f,n:1}; segs.push(cur);
+      if(i%300===0) console.log('طبقة',i,'/',nv,'· مرمّز',enc);
+    }
+    /* empty.png: 1080x1920 شفاف كامل */
+    if(segs.some(s=>s.f==='empty.png')){ const e=await p.evaluate(()=>{const c=document.createElement('canvas');c.width=1080;c.height=1920;return c.toDataURL('image/png');}); fs.writeFileSync(W+'ovl/empty.png',Buffer.from(e.split(',')[1],'base64')); }
+    let L=''; for(const s of segs) L+="file '"+s.f+"'\nduration "+(s.n/FPS).toFixed(6)+"\n";
+    if(segs.length) L+="file '"+segs[segs.length-1].f+"'\n";
+    fs.writeFileSync(W+'ovl/list.txt',L);
+    await p.evaluate(()=>{window.OVL=false;});
+    let k=0; for(let i=nv;i<n;i++){ await grab(i/FPS,W+'out/'+String(k++).padStart(5,'0')+'.jpg',0.92); }
+    console.log('⚡ طبقة:',nv,'فريم →',enc,'مرمّز فعلاً ·',segs.length,'مقطع · خاتمة',k,'فريم');
   }else if(mode==='preview'){
     fs.mkdirSync(W+'prev',{recursive:true});
     for(const t of process.argv.slice(4).map(Number)){await grab(t,W+'prev/t'+t.toFixed(2)+'.jpg',0.9);console.log('معاينة',t);}
