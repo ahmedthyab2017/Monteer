@@ -135,7 +135,7 @@ def air(dur=0.5):                 # هواء: نَفَس ناعم (عنصر يط
     if w is not None and dur<=0.6: return w
     return whoosh(max(0.2,float(dur)),True)
 GAIN={"tick":0.050,"hit":0.070,"impact":0.090,"air":0.040,"swish":0.050,"whip":0.060,"pen":0.030,
-      "paper":0.040,"pop":0.050,"ding":0.040,"clink":0.040}
+      "paper":0.040,"pop":0.050,"ding":0.040,"clink":0.040,"capin":0.10}
 PRE={"swish":0.035,"whip":0.10,"air":0.06}     # السحبة ذروتها بعد بدايتها — نقدّمها شوي عشان الذروة تجي مع الحركة
 FXL=[list(x) for x in _s.get("fx",[])]
 _cp=S+"cues.json"

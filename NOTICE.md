@@ -4,3 +4,4 @@
 https://github.com/majedphotos/video-ad-editor — برخصة MIT (نصها في `engine/LICENSE`).
 رخصة MIT تسمح بالاستعمال التجاري بشرط إبقاء نص الرخصة واسم صاحبها. الخطوط بمجلد `engine/motion/fonts` برخصة OFL،
 والمؤثرات الصوتية بمجلد `engine/sfx` برخصة CC0.
+- مؤثرات earshot (MIT © Leon Lin) — مرسومة بالكود ومدموجة في engine/sfx/bank.npz (capin/pop/swish).

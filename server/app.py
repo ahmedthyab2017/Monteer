@@ -193,6 +193,7 @@ def produce(jid: str, body: dict, x_key: str = Header("")):
         shutil.copy(os.path.join(job.dir, "cut.json"), os.path.join(job.dir, "cut.json.orig"))
     st = body.get("capStyle")
     opts = {"capStyle": st} if st in CAP_STYLES else {}
+    opts["sfx"] = body.get("sfx", True) is not False
     job.set(stage="queued", msg="في الطابور…", pct=32, capStyle=opts.get("capStyle"))
     Q.put(("produce", job.id, {"edits": edits, "opts": opts}))
     return job.get()

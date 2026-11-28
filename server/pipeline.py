@@ -258,7 +258,18 @@ def produce(job, edits, opts=None):
     if os.path.exists(os.path.join(BRAND_DIR, "logo.png")):
         shutil.copy(os.path.join(BRAND_DIR, "logo.png"), os.path.join(W, "logo.png"))
     total = json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["total"]
-    json.dump({"outro": 5.2, "whoosh_up": [total]}, open(os.path.join(W, "sfx.json"), "w"))
+    sfx = {"outro": 5.2, "whoosh_up": [total]}
+    if (opts or {}).get("sfx", True):
+        # 🔊 مؤثرات على الفريم بالضبط: نقرة خفيفة مع ظهور كل كابشن، ورنّة على الكلمة المهمة (وحدة كل ٦ ث كحد)
+        cards = json.load(open(os.path.join(W, "caps.json"), encoding="utf-8"))["cards"]
+        fx, last_hot = [], -99.0
+        for c in cards:
+            fx.append([round(c["s"], 3), "capin"])
+            for w in c.get("w", []):
+                if w.get("hot") and w["s"] - last_hot >= 6.0:
+                    fx.append([round(w["s"], 3), "ding", None, 0.07]); last_hot = w["s"]
+        sfx["fx"] = fx
+    json.dump(sfx, open(os.path.join(W, "sfx.json"), "w"))
     run(job, [sys.executable, os.path.join(SCRIPTS, "05_sfx.py"), W])
 
     job.set(stage="render", msg="أرسم الكابشن والخاتمة…", pct=45)

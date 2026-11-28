@@ -215,13 +215,14 @@ function renderStyles(box, get, set) {
     box.appendChild(b);
   });
 }
+$('#sfxBtn').onclick = e => e.currentTarget.classList.toggle('on');
 $('#produceBtn').onclick = async () => {
   const items = [...$('#sents').children].map(li => ({ text: li.querySelector('textarea').value.trim(), drop: li.classList.contains('dropped') }));
   if (items.every(x => x.drop || !x.text)) return toast('لا يمكن حذف كل الجمل');
   pv.pause();
   $('#produceBtn').disabled = true;
   try {
-    await api('/api/jobs/' + current + '/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sentences: items, capStyle: pickedStyle }) });
+    await api('/api/jobs/' + current + '/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sentences: items, capStyle: pickedStyle, sfx: $('#sfxBtn').classList.contains('on') }) });
     $('#sents').innerHTML = ''; await refresh(); clearInterval(timer); timer = setInterval(refresh, 3000);
   } finally { $('#produceBtn').disabled = false; }
 };
